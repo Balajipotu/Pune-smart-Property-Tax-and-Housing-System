@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pmc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pmc_property_tax}
+      POSTGRES_USER: ${POSTGRES_USER:-pmc_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-PmcSecurePass2025!}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pmc_admin} -d ${POSTGRES_DB:-pmc_property_tax}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pmc-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pmc-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-pmc_property_tax}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-pmc_admin}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-PmcSecurePass2025!}
+      JWT_SECRET: ${JWT_SECRET:-9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b}
+      PAYMENT_GATEWAY_WEBHOOK_SECRET: ${PAYMENT_GATEWAY_WEBHOOK_SECRET:-pmc_sbi_epay_webhook_secret_key_2025}
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    networks:
+      - pmc-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pmc-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "3000:80"
+    networks:
+      - pmc-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  pmc-network:
+    driver: bridge
